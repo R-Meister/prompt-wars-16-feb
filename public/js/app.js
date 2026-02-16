@@ -1,6 +1,6 @@
 /**
- * Atlas: Echoes of Earth — Main Application
- * Core game logic, UI interactions, Leaflet map, and state management.
+ * Atlas: Echoes of Earth — Main Application with Sprite Character
+ * Core game logic, UI interactions, Leaflet map, sprite animation, and state management.
  * @module app
  */
 
@@ -8,7 +8,6 @@
     'use strict';
 
     // ─── State ─────────────────────────────
-    /** @type {{ countryChain: Array, usedCountries: string[], previousCountry: string|null, currentScenario: Object|null, isLoading: boolean, map: Object|null, markers: Array }} */
     const state = {
         countryChain: [],
         usedCountries: [],
@@ -18,6 +17,9 @@
         map: null,
         markers: [],
         activeMarker: null,
+        sprite: null,
+        journeyPath: null,
+        isWalking: false,
     };
 
     // ─── DOM Elements ──────────────────────
@@ -58,7 +60,6 @@
         belonging: { color: 'hsl(145,65%,45%)', icon: '🏡', label: 'Belonging' },
     };
 
-    /** @type {Object<string, {r:number, g:number, b:number}>} */
     const EMOTION_RGB = {
         warmth: { r: 245, g: 158, b: 11 },
         loneliness: { r: 59, g: 130, b: 246 },
@@ -69,54 +70,207 @@
     };
 
     // ─── Initialize ────────────────────────
-    /** Boot the application after DOM ready. */
     function init() {
-        initMap();
-        setupEventListeners();
+        console.log('[Atlas] Initializing...');
+        
+        try {
+            initMap();
+            setupEventListeners();
+            console.log('[Atlas] Initialization complete');
+        } catch (error) {
+            console.error('[Atlas] Initialization error:', error);
+            showToast('Failed to initialize. Please refresh.', 'error');
+        }
 
         // Simulate loading then reveal app
         setTimeout(() => {
             els.loadingScreen.classList.add('fade-out');
             els.app.classList.remove('hidden');
             setTimeout(() => els.loadingScreen.remove(), 800);
-            els.countryInput.focus();
-        }, 2200);
+            if (els.countryInput) els.countryInput.focus();
+        }, 1500);
     }
 
     // ─── Leaflet Map ───────────────────────
-    /** Initialize Leaflet map with CartoDB Dark Matter tiles. */
     function initMap() {
-        if (!els.leafletMap) return;
+        if (!els.leafletMap) {
+            console.error('[Atlas] Map container not found');
+            return;
+        }
 
-        // Initialize map centered on world view
-        state.map = L.map('leaflet-map', {
-            center: [20, 0],
-            zoom: 2,
-            minZoom: 2,
-            maxZoom: 10,
-            zoomControl: false,
-            attributionControl: false,
-            worldCopyJump: true,
-        });
+        if (typeof L === 'undefined') {
+            console.error('[Atlas] Leaflet not loaded');
+            showToast('Map library failed to load. Check internet connection.', 'error');
+            return;
+        }
 
-        // Add CartoDB Dark Matter tile layer
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 20
-        }).addTo(state.map);
+        try {
+            // Initialize map centered on world view
+            state.map = L.map('leaflet-map', {
+                center: [20, 0],
+                zoom: 2,
+                minZoom: 2,
+                maxZoom: 10,
+                zoomControl: false,
+                attributionControl: false,
+                worldCopyJump: true,
+            });
 
-        // Add zoom control to bottom right
-        L.control.zoom({
-            position: 'bottomright'
-        }).addTo(state.map);
+            // Add CartoDB Dark Matter tile layer
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(state.map);
+
+            // Add zoom control to bottom right
+            L.control.zoom({
+                position: 'bottomright'
+            }).addTo(state.map);
+
+            // Add sprite character
+            createSprite();
+
+            console.log('[Atlas] Map initialized successfully');
+        } catch (error) {
+            console.error('[Atlas] Map initialization error:', error);
+            showToast('Failed to load map', 'error');
+        }
     }
 
-    /**
-     * Add a glowing marker for a country on the Leaflet map.
-     * @param {Object} country - Country data with lat, lng, name
-     * @param {string} emotion - Dominant emotion for color
-     */
+    // ─── Sprite Character ──────────────────
+    function createSprite() {
+        if (!state.map) return;
+
+        const spriteIcon = L.divIcon({
+            className: 'sprite-character',
+            html: `
+                <div class="sprite-container">
+                    <svg viewBox="0 0 40 60" class="sprite-svg">
+                        <!-- Walking person SVG -->
+                        <g class="sprite-body">
+                            <!-- Head -->
+                            <circle cx="20" cy="10" r="8" fill="#fbbf24" />
+                            <!-- Body -->
+                            <line x1="20" y1="18" x2="20" y2="35" stroke="#60a5fa" stroke-width="6" stroke-linecap="round" />
+                            <!-- Arms -->
+                            <line class="sprite-arm-left" x1="20" y1="22" x2="8" y2="30" stroke="#fbbf24" stroke-width="4" stroke-linecap="round" />
+                            <line class="sprite-arm-right" x1="20" y1="22" x2="32" y2="30" stroke="#fbbf24" stroke-width="4" stroke-linecap="round" />
+                            <!-- Legs -->
+                            <line class="sprite-leg-left" x1="20" y1="35" x2="12" y2="52" stroke="#374151" stroke-width="5" stroke-linecap="round" />
+                            <line class="sprite-leg-right" x1="20" y1="35" x2="28" y2="52" stroke="#374151" stroke-width="5" stroke-linecap="round" />
+                            <!-- Backpack -->
+                            <rect x="24" y="20" width="10" height="14" rx="2" fill="#ef4444" />
+                        </g>
+                    </svg>
+                    <div class="sprite-shadow"></div>
+                </div>
+            `,
+            iconSize: [40, 60],
+            iconAnchor: [20, 55],
+        });
+
+        // Start sprite at a default position (will be hidden until first country)
+        state.sprite = L.marker([0, 0], { 
+            icon: spriteIcon, 
+            zIndexOffset: 2000 
+        });
+        
+        // Don't add to map yet - wait for first country
+    }
+
+    // ─── Animate Sprite Walking ────────────
+    function animateSpriteToCountry(fromLat, fromLng, toLat, toLng, countryName) {
+        if (!state.map || !state.sprite) return;
+
+        state.isWalking = true;
+        
+        // Add sprite to map if not already
+        if (!state.map.hasLayer(state.sprite)) {
+            state.sprite.setLatLng([fromLat, fromLng]);
+            state.sprite.addTo(state.map);
+        }
+
+        // Draw path line
+        if (state.journeyPath) {
+            state.map.removeLayer(state.journeyPath);
+        }
+
+        const latlngs = [
+            [fromLat, fromLng],
+            [toLat, toLng]
+        ];
+
+        state.journeyPath = L.polyline(latlngs, {
+            color: '#60a5fa',
+            weight: 3,
+            opacity: 0.7,
+            dashArray: '10, 10',
+            className: 'journey-path'
+        }).addTo(state.map);
+
+        // Animate the path drawing
+        const pathElement = state.journeyPath._path;
+        if (pathElement) {
+            const length = pathElement.getTotalLength ? pathElement.getTotalLength() : 1000;
+            pathElement.style.strokeDasharray = length;
+            pathElement.style.strokeDashoffset = length;
+            pathElement.style.animation = 'draw-path 2s ease forwards';
+        }
+
+        // Animate sprite movement
+        const duration = 2000; // 2 seconds
+        const startTime = Date.now();
+        
+        function animate() {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Easing function
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            
+            const currentLat = fromLat + (toLat - fromLat) * easeProgress;
+            const currentLng = fromLng + (toLng - fromLng) * easeProgress;
+            
+            state.sprite.setLatLng([currentLat, currentLng]);
+            
+            // Add walking animation class
+            const spriteContainer = document.querySelector('.sprite-container');
+            if (spriteContainer) {
+                spriteContainer.classList.add('walking');
+            }
+            
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                // Arrived
+                state.isWalking = false;
+                if (spriteContainer) {
+                    spriteContainer.classList.remove('walking');
+                }
+                
+                // Show arrival popup
+                state.sprite.bindPopup(`<b>Arrived in ${countryName}!</b>`, {
+                    closeButton: false,
+                    className: 'arrival-popup'
+                }).openPopup();
+                
+                setTimeout(() => {
+                    state.sprite.closePopup();
+                }, 2000);
+            }
+        }
+        
+        requestAnimationFrame(animate);
+        
+        // Pan map to follow sprite
+        state.map.flyTo([toLat, toLng], 5, {
+            duration: 2.5,
+            easeLinearity: 0.25
+        });
+    }
+
+    // ─── Add Country Marker ────────────────
     function addMapMarker(country, emotion) {
         if (!state.map) return;
         
@@ -149,110 +303,67 @@
         return marker;
     }
 
-    /**
-     * Show an animated pulse on the active country.
-     * @param {number} lat
-     * @param {number} lng
-     * @param {string} countryName
-     */
-    function setActiveCountry(lat, lng, countryName) {
-        if (!state.map) return;
-
-        // Remove previous active marker
-        if (state.activeMarker) {
-            state.map.removeLayer(state.activeMarker);
-        }
-
-        // Create active marker with larger pulse
-        const activeIcon = L.divIcon({
-            className: 'custom-marker active',
-            html: `
-                <div class="marker-container active">
-                    <div class="marker-pulse active"></div>
-                    <div class="marker-core active"></div>
-                </div>
-            `,
-            iconSize: [30, 30],
-            iconAnchor: [15, 15],
-        });
-
-        state.activeMarker = L.marker([lat, lng], { icon: activeIcon, zIndexOffset: 1000 })
-            .addTo(state.map);
-
-        // Fly to location with smooth animation
-        state.map.flyTo([lat, lng], 5, {
-            duration: 1.5,
-            easeLinearity: 0.25
-        });
-    }
-
-    /** Clear all map markers. */
-    function clearMapMarkers() {
-        if (state.activeMarker) {
-            state.map.removeLayer(state.activeMarker);
-            state.activeMarker = null;
-        }
-        state.markers.forEach(marker => state.map.removeLayer(marker));
-        state.markers = [];
-        
-        // Reset map view
-        state.map.flyTo([20, 0], 2, {
-            duration: 1.5,
-            easeLinearity: 0.25
-        });
-    }
-
     // ─── Event Listeners ──────────────────
-    /** Wire up all UI event handlers. */
     function setupEventListeners() {
-        // Submit country
-        els.btnSubmit.addEventListener('click', handleSubmit);
-        els.countryInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') handleSubmit();
-            if (e.key === 'Escape') hideAutocomplete();
-            if (e.key === 'ArrowDown') navigateAutocomplete(1);
-            if (e.key === 'ArrowUp') navigateAutocomplete(-1);
-        });
+        if (els.btnSubmit) {
+            els.btnSubmit.addEventListener('click', handleSubmit);
+        }
+        
+        if (els.countryInput) {
+            els.countryInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') handleSubmit();
+                if (e.key === 'Escape') hideAutocomplete();
+                if (e.key === 'ArrowDown') navigateAutocomplete(1);
+                if (e.key === 'ArrowUp') navigateAutocomplete(-1);
+            });
 
-        // Autocomplete with debounce
-        let debounceTimer;
-        els.countryInput.addEventListener('input', () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => fetchAutocomplete(els.countryInput.value), 200);
-        });
+            // Autocomplete with debounce
+            let debounceTimer;
+            els.countryInput.addEventListener('input', () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => fetchAutocomplete(els.countryInput.value), 200);
+            });
+        }
 
-        // Continue
-        els.btnContinue.addEventListener('click', handleContinue);
+        if (els.btnContinue) {
+            els.btnContinue.addEventListener('click', handleContinue);
+        }
 
-        // World Map
-        els.btnWorldMap.addEventListener('click', openWorldMap);
-        els.btnCloseModal.addEventListener('click', closeWorldMap);
-        els.worldMapModal.addEventListener('click', (e) => {
-            if (e.target === els.worldMapModal) closeWorldMap();
-        });
+        if (els.btnWorldMap) {
+            els.btnWorldMap.addEventListener('click', openWorldMap);
+        }
+        
+        if (els.btnCloseModal) {
+            els.btnCloseModal.addEventListener('click', closeWorldMap);
+        }
+        
+        if (els.worldMapModal) {
+            els.worldMapModal.addEventListener('click', (e) => {
+                if (e.target === els.worldMapModal) closeWorldMap();
+            });
+        }
 
-        // New Game
-        els.btnNewGame.addEventListener('click', resetGame);
+        if (els.btnNewGame) {
+            els.btnNewGame.addEventListener('click', resetGame);
+        }
 
         // Close autocomplete on outside click
         document.addEventListener('click', (e) => {
-            if (!els.inputArea.contains(e.target)) hideAutocomplete();
+            if (els.inputArea && !els.inputArea.contains(e.target)) hideAutocomplete();
         });
 
         // Keyboard escape for modal
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && !els.worldMapModal.classList.contains('hidden')) {
+            if (e.key === 'Escape' && els.worldMapModal && !els.worldMapModal.classList.contains('hidden')) {
                 closeWorldMap();
             }
         });
     }
 
     // ─── Submit Country ─────────────────────
-    /**
-     * Handle country submission: validate, generate scenario, update map.
-     * @returns {Promise<void>}
-     */
     async function handleSubmit() {
+        if (!els.countryInput) return;
+        
         const countryName = els.countryInput.value.trim();
         if (!countryName || state.isLoading) return;
 
@@ -261,7 +372,7 @@
         clearHint();
 
         try {
-            // 1. Validate
+            // Validate
             const validation = await api('/api/validate-country', {
                 country: countryName,
                 previousCountry: state.previousCountry,
@@ -278,11 +389,11 @@
                 return;
             }
 
-            // 2. Show success briefly
+            // Show success
             els.countryInput.classList.add('success');
             showHint(`✓ ${validation.country.name}`, 'success');
 
-            // 3. Generate scenario
+            // Generate scenario
             const scenario = await api('/api/generate-scenario', {
                 country: validation.country.name,
                 capital: validation.country.capital,
@@ -292,7 +403,7 @@
                 region: validation.country.region,
             });
 
-            // 4. Update state
+            // Update state
             state.currentScenario = { ...scenario, countryData: validation.country };
             state.usedCountries.push(validation.country.name.toLowerCase());
             state.countryChain.push({
@@ -300,16 +411,29 @@
                 emotion: scenario.existingProfile?.dominantEmotion || 'neutral',
             });
 
-            // 5. Update UI
+            // Animate sprite from previous country (or start position)
+            const prevCountry = state.countryChain.length > 1 ? state.countryChain[state.countryChain.length - 2] : null;
+            const fromLat = prevCountry ? prevCountry.lat || 0 : validation.country.lat;
+            const fromLng = prevCountry ? prevCountry.lng || 0 : validation.country.lng - 10;
+            
+            animateSpriteToCountry(
+                fromLat, 
+                fromLng, 
+                validation.country.lat, 
+                validation.country.lng,
+                validation.country.name
+            );
+
+            // Update UI
             updateCountryChain();
 
-            // 6. Mark on map
-            setActiveCountry(validation.country.lat, validation.country.lng, validation.country.name);
-
-            // 7. Show scenario
-            showScenario(scenario);
+            // Show scenario after a delay (let animation start)
+            setTimeout(() => {
+                showScenario(scenario);
+            }, 1000);
 
         } catch (err) {
+            console.error('[Atlas] Submit error:', err);
             showHint('Something went wrong. Please try again.', 'error');
             showToast('Connection error. Check your internet.', 'error');
         }
@@ -318,42 +442,37 @@
     }
 
     // ─── Show Scenario ─────────────────────
-    /**
-     * Display the AI-generated scenario with dynamically generated choice buttons.
-     * @param {Object} scenario
-     */
     function showScenario(scenario) {
+        if (!els.scenarioArea || !els.scenarioText) return;
+        
         els.inputArea.classList.add('hidden');
         els.echoResult.classList.add('hidden');
         els.scenarioArea.classList.remove('hidden');
 
-        els.scenarioCountryName.textContent = scenario.country;
-        els.scenarioCapital.textContent = scenario.capital;
+        if (els.scenarioCountryName) els.scenarioCountryName.textContent = scenario.country;
+        if (els.scenarioCapital) els.scenarioCapital.textContent = scenario.capital;
 
         // Typewriter effect
         typewriter(els.scenarioText, scenario.scenario, 30);
 
-        // Dynamically generate choice buttons based on number of choices
-        els.choiceButtons.innerHTML = '';
-        scenario.choices.forEach((choice) => {
-            const btn = document.createElement('button');
-            btn.className = `choice-btn choice-${choice.id.toLowerCase()}`;
-            btn.setAttribute('data-choice', choice.id);
-            btn.innerHTML = `
-                <span class="choice-label">${choice.id}</span>
-                <span class="choice-text">${choice.text}</span>
-            `;
-            btn.addEventListener('click', () => handleChoice(choice.id));
-            els.choiceButtons.appendChild(btn);
-        });
+        // Dynamically generate choice buttons
+        if (els.choiceButtons) {
+            els.choiceButtons.innerHTML = '';
+            scenario.choices.forEach((choice) => {
+                const btn = document.createElement('button');
+                btn.className = `choice-btn choice-${choice.id.toLowerCase()}`;
+                btn.setAttribute('data-choice', choice.id);
+                btn.innerHTML = `
+                    <span class="choice-label">${choice.id}</span>
+                    <span class="choice-text">${choice.text}</span>
+                `;
+                btn.addEventListener('click', () => handleChoice(choice.id));
+                els.choiceButtons.appendChild(btn);
+            });
+        }
     }
 
     // ─── Handle Choice ─────────────────────
-    /**
-     * Submit the player's choice and display the emotional echo.
-     * @param {string} choiceId
-     * @returns {Promise<void>}
-     */
     async function handleChoice(choiceId) {
         if (state.isLoading || !state.currentScenario) return;
 
@@ -376,7 +495,6 @@
         setLoading(true);
 
         try {
-            // Submit choice to backend
             const result = await api('/api/submit-choice', {
                 country: countryData.name,
                 capital: countryData.capital,
@@ -388,15 +506,15 @@
 
             state.previousCountry = countryData.name;
 
-            // Add marker to map
-            addMapMarker(countryData, result.profile?.dominantEmotion || 'neutral');
-
-            // Update chain emotion
+            // Store lat/lng in chain for next animation
             const lastChain = state.countryChain[state.countryChain.length - 1];
-            if (lastChain) lastChain.emotion = result.profile?.dominantEmotion || 'neutral';
+            if (lastChain) {
+                lastChain.lat = countryData.lat;
+                lastChain.lng = countryData.lng;
+                lastChain.emotion = result.profile?.dominantEmotion || 'neutral';
+            }
+            
             updateCountryChain();
-
-            // Show echo
             showEcho(result.profile, choice.emotions, countryData.name);
 
         } catch (err) {
@@ -407,13 +525,9 @@
     }
 
     // ─── Show Echo Result ──────────────────
-    /**
-     * Render the emotional echo result with animated bars.
-     * @param {Object} profile - Country emotion profile
-     * @param {Object} choiceEmotions - Emotions from chosen option
-     * @param {string} countryName
-     */
     function showEcho(profile, choiceEmotions, countryName) {
+        if (!els.echoResult || !els.emotionBars) return;
+        
         els.scenarioArea.classList.add('hidden');
         els.echoResult.classList.remove('hidden');
 
@@ -434,7 +548,7 @@
 
         els.emotionBars.innerHTML = barsHTML;
 
-        // Animate bars after render
+        // Animate bars
         requestAnimationFrame(() => {
             setTimeout(() => {
                 els.emotionBars.querySelectorAll('.emotion-bar-fill').forEach((bar) => {
@@ -455,20 +569,24 @@
             neutral: `You've left your mark on ${countryName}.`,
         };
 
-        els.echoMessage.textContent = `${messages[dominant]} (${visitCount} ${visitCount === 1 ? 'visit' : 'visits'} total)`;
-        els.countryCount.textContent = state.countryChain.length;
+        if (els.echoMessage) {
+            els.echoMessage.textContent = `${messages[dominant]} (${visitCount} ${visitCount === 1 ? 'visit' : 'visits'} total)`;
+        }
+        if (els.countryCount) {
+            els.countryCount.textContent = state.countryChain.length;
+        }
     }
 
     // ─── Continue Journey ──────────────────
-    /** Reset UI for the next country entry. */
     function handleContinue() {
+        if (!els.countryInput) return;
+        
         els.echoResult.classList.add('hidden');
         els.inputArea.classList.remove('hidden');
         els.countryInput.value = '';
         els.countryInput.classList.remove('success', 'error');
         clearHint();
 
-        // Show required letter hint
         if (state.previousCountry) {
             const lastLetter = getLastLetter(state.previousCountry);
             showHint(`Next country must start with "${lastLetter.toUpperCase()}"`, 'info');
@@ -480,10 +598,6 @@
     // ─── Autocomplete ──────────────────────
     let acIndex = -1;
 
-    /**
-     * Fetch autocomplete suggestions from the API.
-     * @param {string} query
-     */
     async function fetchAutocomplete(query) {
         if (!query || query.length < 2) {
             hideAutocomplete();
@@ -504,11 +618,9 @@
         }
     }
 
-    /**
-     * Render autocomplete dropdown.
-     * @param {Array} results
-     */
     function showAutocomplete(results) {
+        if (!els.autocompleteList) return;
+        
         acIndex = -1;
         els.autocompleteList.innerHTML = results.map((c, i) =>
             `<li role="option" data-index="${i}" data-name="${c.name}">${c.name} <span class="ac-capital">${c.capital}</span></li>`
@@ -525,17 +637,16 @@
         });
     }
 
-    /** Hide autocomplete dropdown. */
     function hideAutocomplete() {
-        els.autocompleteList.classList.remove('visible');
+        if (els.autocompleteList) {
+            els.autocompleteList.classList.remove('visible');
+        }
         acIndex = -1;
     }
 
-    /**
-     * Navigate autocomplete with arrow keys.
-     * @param {number} dir - +1 or -1
-     */
     function navigateAutocomplete(dir) {
+        if (!els.autocompleteList) return;
+        
         const items = els.autocompleteList.querySelectorAll('li');
         if (!items.length) return;
 
@@ -546,18 +657,19 @@
     }
 
     // ─── World Map ─────────────────────────
-    /** Open the world map modal and load country data as markers. */
     async function openWorldMap() {
-        els.worldMapModal.classList.remove('hidden');
+        if (els.worldMapModal) {
+            els.worldMapModal.classList.remove('hidden');
+        }
 
         const mapView = document.getElementById('world-map-view');
+        if (!mapView) return;
 
         try {
             const res = await fetch('/api/world-map');
             const data = await res.json();
 
             if (data.countries?.length) {
-                // Build Leaflet map for modal
                 mapView.innerHTML = '<div id="modal-map" style="width:100%;height:100%;"></div>';
                 
                 const modalMap = L.map('modal-map', {
@@ -599,39 +711,61 @@
         }
     }
 
-    /** Close the world map modal. */
     function closeWorldMap() {
-        els.worldMapModal.classList.add('hidden');
+        if (els.worldMapModal) {
+            els.worldMapModal.classList.add('hidden');
+        }
     }
 
     // ─── Reset Game ────────────────────────
-    /** Reset all game state and UI to the initial state. */
     function resetGame() {
         state.countryChain = [];
         state.usedCountries = [];
         state.previousCountry = null;
         state.currentScenario = null;
 
-        els.scenarioArea.classList.add('hidden');
-        els.echoResult.classList.add('hidden');
-        els.inputArea.classList.remove('hidden');
-        els.countryInput.value = '';
-        els.countryInput.classList.remove('success', 'error');
+        if (els.scenarioArea) els.scenarioArea.classList.add('hidden');
+        if (els.echoResult) els.echoResult.classList.add('hidden');
+        if (els.inputArea) els.inputArea.classList.remove('hidden');
+        if (els.countryInput) {
+            els.countryInput.value = '';
+            els.countryInput.classList.remove('success', 'error');
+        }
         clearHint();
 
-        els.countryChain.innerHTML = '<div class="chain-placeholder">Enter your first country to begin...</div>';
-        els.countryCount.textContent = '0';
+        if (els.countryChain) {
+            els.countryChain.innerHTML = '<div class="chain-placeholder">Enter your first country to begin...</div>';
+        }
+        if (els.countryCount) {
+            els.countryCount.textContent = '0';
+        }
 
-        clearMapMarkers();
+        // Clear map markers but keep sprite
+        state.markers.forEach(marker => {
+            if (state.map) state.map.removeLayer(marker);
+        });
+        state.markers = [];
+
+        if (state.journeyPath && state.map) {
+            state.map.removeLayer(state.journeyPath);
+            state.journeyPath = null;
+        }
+
+        // Reset map view
+        if (state.map) {
+            state.map.flyTo([20, 0], 2, {
+                duration: 1.5,
+                easeLinearity: 0.25
+            });
+        }
 
         showToast('New journey started!', 'info');
-        els.countryInput.focus();
+        if (els.countryInput) els.countryInput.focus();
     }
 
     // ─── Country Chain UI ─────────────────────
-    /** Update the visual country chain with emotion colors. */
     function updateCountryChain() {
-        if (!state.countryChain.length) return;
+        if (!state.countryChain.length || !els.countryChain) return;
 
         const emotionColors = {
             warmth: 'hsl(35,90%,55%)',
@@ -648,18 +782,13 @@
             return `<div class="chain-country" role="listitem"><span class="chain-dot" style="background:${color}"></span>${c.name}</div>${arrow}`;
         }).join('');
 
-        // Scroll to end
         els.countryChain.scrollLeft = els.countryChain.scrollWidth;
-        els.countryCount.textContent = state.countryChain.length;
+        if (els.countryCount) {
+            els.countryCount.textContent = state.countryChain.length;
+        }
     }
 
     // ─── Utilities ─────────────────────────
-    /**
-     * Make a POST API request.
-     * @param {string} url - Endpoint URL
-     * @param {Object} body - Request body
-     * @returns {Promise<Object>}
-     */
     async function api(url, body) {
         const res = await fetch(url, {
             method: 'POST',
@@ -673,27 +802,20 @@
         return res.json();
     }
 
-    /**
-     * Typewriter effect for text display.
-     * @param {HTMLElement} element - Target element
-     * @param {string} text - Text to type
-     * @param {number} [speed=30] - Milliseconds between characters
-     */
     function typewriter(element, text, speed = 30) {
+        if (!element) return;
         element.textContent = '';
         let i = 0;
         const timer = setInterval(() => {
-            element.textContent += text[i];
-            i++;
-            if (i >= text.length) clearInterval(timer);
+            if (i < text.length) {
+                element.textContent += text[i];
+                i++;
+            } else {
+                clearInterval(timer);
+            }
         }, speed);
     }
 
-    /**
-     * Get the last alphabetic letter from a country name.
-     * @param {string} str
-     * @returns {string}
-     */
     function getLastLetter(str) {
         for (let i = str.length - 1; i >= 0; i--) {
             if (/[a-z]/i.test(str[i])) {
@@ -703,38 +825,32 @@
         return str[str.length - 1].toLowerCase();
     }
 
-    /**
-     * Toggle loading state on submit button.
-     * @param {boolean} loading
-     */
     function setLoading(loading) {
         state.isLoading = loading;
-        els.btnSubmit.disabled = loading;
-        if (loading) {
-            els.btnSubmit.innerHTML = '<div class="spinner"></div>';
-        } else {
-            els.btnSubmit.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>';
+        if (els.btnSubmit) {
+            els.btnSubmit.disabled = loading;
+            els.btnSubmit.innerHTML = loading 
+                ? '<div class="spinner"></div>' 
+                : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>';
         }
     }
 
-    /**
-     * Display a hint below the input field.
-     * @param {string} message
-     * @param {'error'|'success'|'info'} [type='']
-     */
     function showHint(message, type = '') {
-        els.inputHint.textContent = message;
-        els.inputHint.className = `input-hint ${type}`;
+        if (els.inputHint) {
+            els.inputHint.textContent = message;
+            els.inputHint.className = `input-hint ${type}`;
+        }
     }
 
-    /** Clear the input hint. */
     function clearHint() {
-        els.inputHint.textContent = '';
-        els.inputHint.className = 'input-hint';
+        if (els.inputHint) {
+            els.inputHint.textContent = '';
+            els.inputHint.className = 'input-hint';
+        }
     }
 
-    /** Shake input on validation error. */
     function shakeInput() {
+        if (!els.countryInput) return;
         els.countryInput.classList.add('error');
         els.countryInput.style.animation = 'none';
         requestAnimationFrame(() => {
@@ -743,12 +859,9 @@
         setTimeout(() => els.countryInput.classList.remove('error'), 2000);
     }
 
-    /**
-     * Show a toast notification.
-     * @param {string} message
-     * @param {'info'|'error'|'success'} [type='info']
-     */
     function showToast(message, type = 'info') {
+        if (!els.toastContainer) return;
+        
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
@@ -762,5 +875,9 @@
     }
 
     // ─── Boot ──────────────────────────────
-    document.addEventListener('DOMContentLoaded', init);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 })();

@@ -168,7 +168,7 @@ describe('API Endpoints', () => {
                 .send({});
 
             expect(res.status).toBe(400);
-            expect(res.body.error).toContain('Text is required');
+            expect(res.body.error).toContain('text is required');
         });
 
         test('returns 400 for non-string text', async () => {
@@ -196,7 +196,7 @@ describe('API Endpoints', () => {
                 .send({ text: longText });
 
             expect(res.status).toBe(400);
-            expect(res.body.error).toContain('maximum length');
+            expect(res.body.error).toContain('must not exceed');
         });
     });
 
@@ -217,10 +217,13 @@ describe('API Endpoints', () => {
             expect(res.text).toContain('Atlas');
         });
 
-        test('serves config.js', async () => {
+        test('no config.js route (Maps removed)', async () => {
             const res = await request(app).get('/config.js');
+            // Since Maps was removed, /config.js should not exist as a route
+            // It may return 200 via SPA fallback (index.html) or 404
             expect(res.status).toBe(200);
-            expect(res.text).toContain('__ATLAS_CONFIG__');
+            // Should NOT contain Maps config
+            expect(res.text).not.toContain('MAPS_API_KEY');
         });
 
         test('SPA fallback returns index.html for unknown routes', async () => {

@@ -1,7 +1,7 @@
 {
   "name": "atlas-echoes-of-earth",
-  "version": "1.0.0",
-  "description": "A multiplayer AI-driven geography experience that transforms the Atlas word game into an evolving emotional world map",
+  "version": "2.0.0",
+  "description": "An AI-driven geography experience that transforms the Atlas word game into an evolving emotional world map using Google Cloud services",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -17,16 +17,20 @@
     "ai",
     "gemini",
     "emotional-map",
-    "google-maps",
     "firebase",
     "cloud-logging",
-    "text-to-speech"
+    "text-to-speech",
+    "translation",
+    "natural-language",
+    "sentiment-analysis"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/language": "^6.5.0",
     "@google-cloud/logging": "^11.2.0",
     "@google-cloud/text-to-speech": "^5.5.0",
+    "@google-cloud/translate": "^8.5.0",
     "@google/generative-ai": "^0.21.0",
     "compression": "^1.7.5",
     "cors": "^2.8.5",

@@ -2,6 +2,7 @@
  * Atlas: Echoes of Earth — Express Server
  * Main entry point for the application.
  * Configures security, compression, logging, and routing middleware.
+ * @module server
  */
 
 require('dotenv').config();
@@ -15,6 +16,7 @@ const path = require('path');
 const apiRoutes = require('./src/routes/api');
 const { requestIdMiddleware } = require('./src/middleware/requestId');
 const { logger } = require('./src/utils/logger');
+const { AppError } = require('./src/utils/AppError');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,30 +45,15 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: [
-        "'self'",
-        "'unsafe-inline'",
-        "https://maps.googleapis.com",
-        "https://maps.gstatic.com",
-      ],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: [
         "'self'",
         "'unsafe-inline'",
         "https://fonts.googleapis.com",
-        "https://maps.googleapis.com",
-        "https://maps.gstatic.com",
       ],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: [
-        "'self'",
-        "data:",
-        "https://maps.googleapis.com",
-        "https://maps.gstatic.com",
-        "https://*.google.com",
-        "https://*.googleusercontent.com",
-      ],
-      connectSrc: ["'self'", "https://maps.googleapis.com"],
-      frameSrc: ["'self'", "https://maps.googleapis.com"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
       mediaSrc: ["'self'", "blob:", "data:"],
     },
   },
@@ -115,16 +102,7 @@ app.use((req, res, next) => {
 });
 
 // ---------------------
-// Inject Google Maps Key into frontend
-// ---------------------
-app.get('/config.js', (_req, res) => {
-  res.type('application/javascript');
-  res.set('Cache-Control', 'public, max-age=300');
-  res.send(`window.__ATLAS_CONFIG__={MAPS_API_KEY:"${process.env.GOOGLE_MAPS_API_KEY || ''}"};`);
-});
-
-// ---------------------
-// Static Files (with caching)
+// Static Files (with caching + ETag)
 // ---------------------
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0,
@@ -147,6 +125,21 @@ app.get('*', (_req, res) => {
 // Global Error Handler
 // ---------------------
 app.use((err, req, res, _next) => {
+  // Handle known operational errors
+  if (err instanceof AppError) {
+    logger.warn('Operational error', {
+      code: err.code,
+      message: err.message,
+      path: req?.path,
+      requestId: req?.id,
+    });
+    return res.status(err.statusCode).json({
+      error: err.message,
+      code: err.code,
+    });
+  }
+
+  // Handle unknown errors
   logger.error('Unhandled error', {
     message: err.message,
     stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
@@ -157,6 +150,7 @@ app.use((err, req, res, _next) => {
     error: process.env.NODE_ENV === 'production'
       ? 'Internal server error'
       : err.message,
+    code: 'INTERNAL_ERROR',
   });
 });
 

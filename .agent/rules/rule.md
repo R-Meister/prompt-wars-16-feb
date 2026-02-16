@@ -30,3 +30,5 @@ Submissions will be reviewed on:
 ---
 
 > Make sure that you ensure that all the evaluation criteria's are 10/10 when scored and should be best at what it is. Ensure Utmost rules are followed.
+
+Also git add commit and push after every changes.

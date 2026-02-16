@@ -132,16 +132,35 @@ class LRUCache {
             hitRate: total > 0 ? `${((this._hits / total) * 100).toFixed(1)}%` : '0%',
         };
     }
+
+    /**
+     * Cache-aside pattern: get from cache or compute + store.
+     * Eliminates repetitive get/set boilerplate in route handlers.
+     * @param {string} key - Cache key
+     * @param {() => Promise<*>} asyncFn - Async function to compute value on miss
+     * @param {number} [ttlMs] - Optional TTL override
+     * @returns {Promise<*>}
+     */
+    async getOrSet(key, asyncFn, ttlMs) {
+        const cached = this.get(key);
+        if (cached !== undefined) return cached;
+
+        const value = await asyncFn();
+        this.set(key, value, ttlMs);
+        return value;
+    }
 }
 
 // Pre-configured cache instances for different data types
 const citySearchCache = new LRUCache({ maxSize: 100, defaultTTL: 60_000, name: 'citySearch' });
 const cityProfileCache = new LRUCache({ maxSize: 200, defaultTTL: 30_000, name: 'cityProfile' });
 const worldMapCache = new LRUCache({ maxSize: 1, defaultTTL: 120_000, name: 'worldMap' });
+const scenarioCache = new LRUCache({ maxSize: 50, defaultTTL: 300_000, name: 'scenario' });
 
 module.exports = {
     LRUCache,
     citySearchCache,
     cityProfileCache,
     worldMapCache,
+    scenarioCache,
 };

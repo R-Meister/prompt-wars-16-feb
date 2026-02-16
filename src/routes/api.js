@@ -9,29 +9,29 @@
 const express = require('express');
 
 const router = express.Router();
-const { fullValidation, getHints } = require('../services/cityValidator');
+const { fullValidation, getHints } = require('../services/countryValidator');
 const { generateScenario } = require('../services/scenarioGenerator');
-const { getCityProfile, updateCityProfile, getAllCityProfiles, getEmotionColor } = require('../services/emotionEngine');
-const { searchCities } = require('../data/cities');
+const { getCountryProfile, updateCountryProfile, getAllCountryProfiles, getEmotionColor } = require('../services/emotionEngine');
+const { searchCountries } = require('../data/countries');
 const { synthesizeSpeech } = require('../services/ttsService');
 const { translateText, getSupportedLanguages } = require('../services/translationService');
 const { extractEmotions } = require('../services/sentimentService');
 const { logger } = require('../utils/logger');
-const { citySearchCache, cityProfileCache, worldMapCache, scenarioCache } = require('../utils/cache');
+const { countrySearchCache, countryProfileCache, worldMapCache, scenarioCache } = require('../utils/cache');
 const { validateBody, validateQuery } = require('../middleware/inputValidator');
 const { ValidationError, NotFoundError, ServiceUnavailableError } = require('../utils/AppError');
 
 // ─── Validation Schemas ───────────────────
-const validateCitySchema = {
-    city: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+const validateCountrySchema = {
+    country: { type: 'string', required: true, minLength: 1, maxLength: 100 },
 };
 
 const generateScenarioSchema = {
-    city: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+    country: { type: 'string', required: true, minLength: 1, maxLength: 100 },
 };
 
 const submitChoiceSchema = {
-    city: { type: 'string', required: true, minLength: 1, maxLength: 100 },
+    country: { type: 'string', required: true, minLength: 1, maxLength: 100 },
     choiceId: { type: 'string', required: true },
     emotions: { type: 'object', required: true },
 };
@@ -49,20 +49,20 @@ const sentimentSchema = {
     text: { type: 'string', required: true, minLength: 1, maxLength: 2000 },
 };
 
-// ─── City Validation ──────────────────────
+// ─── Country Validation ──────────────────────
 /**
- * POST /api/validate-city
- * Validate a city name against Atlas rules (letter chain, uniqueness).
+ * POST /api/validate-country
+ * Validate a country name against Atlas rules (letter chain, uniqueness).
  */
-router.post('/validate-city', validateBody(validateCitySchema), (req, res, next) => {
+router.post('/validate-country', validateBody(validateCountrySchema), (req, res, next) => {
     try {
-        const { city, previousCity, usedCities } = req.body;
+        const { country, previousCountry, usedCountries } = req.body;
 
-        const result = fullValidation(city, previousCity, usedCities || []);
+        const result = fullValidation(country, previousCountry, usedCountries || []);
 
         if (!result.valid) {
             const requiredLetter = result.requiredLetter || null;
-            const hints = requiredLetter ? getHints(requiredLetter.toLowerCase(), usedCities || []) : [];
+            const hints = requiredLetter ? getHints(requiredLetter.toLowerCase(), usedCountries || []) : [];
             return res.json({ ...result, hints });
         }
 
@@ -75,26 +75,26 @@ router.post('/validate-city', validateBody(validateCitySchema), (req, res, next)
 // ─── Scenario Generation ──────────────────
 /**
  * POST /api/generate-scenario
- * Generate an AI-powered scenario for a city (cached per city for 5 minutes).
+ * Generate an AI-powered scenario for a country (cached per country for 5 minutes).
  */
 router.post('/generate-scenario', validateBody(generateScenarioSchema), async (req, res, next) => {
     try {
-        const { city, country, lat, lng } = req.body;
+        const { country, capital, lat, lng, continent, region } = req.body;
 
         // Check scenario cache first
-        const cacheKey = `scenario_${city.toLowerCase()}`;
+        const cacheKey = `scenario_${country.toLowerCase()}`;
 
-        const profile = await getCityProfile(city);
+        const profile = await getCountryProfile(country);
         const emotionProfile = profile?.emotions || null;
 
         const scenario = await scenarioCache.getOrSet(cacheKey, () =>
             generateScenario(
-                { name: city, country: country || 'Unknown', lat: lat || 0, lng: lng || 0 },
+                { name: country, capital: capital || 'Unknown', lat: lat || 0, lng: lng || 0, continent: continent || 'Unknown', region: region || 'Unknown' },
                 emotionProfile,
             ),
         );
 
-        logger.info('Scenario generated', { city, cached: scenarioCache.has(cacheKey), requestId: req.id });
+        logger.info('Scenario generated', { country, cached: scenarioCache.has(cacheKey), requestId: req.id });
 
         return res.json({
             ...scenario,
@@ -112,24 +112,24 @@ router.post('/generate-scenario', validateBody(generateScenarioSchema), async (r
 // ─── Submit Choice ────────────────────────
 /**
  * POST /api/submit-choice
- * Process a player's choice and update the city's emotional profile.
+ * Process a player's choice and update the country's emotional profile.
  */
 router.post('/submit-choice', validateBody(submitChoiceSchema), async (req, res, next) => {
     try {
-        const { city, country, lat, lng, choiceId, emotions } = req.body;
+        const { country, capital, lat, lng, choiceId, emotions } = req.body;
 
-        const updatedProfile = await updateCityProfile(
-            city,
+        const updatedProfile = await updateCountryProfile(
+            country,
             emotions,
-            { name: city, country, lat, lng },
+            { name: country, capital, lat, lng },
         );
 
         // Invalidate caches
-        cityProfileCache.delete(city.toLowerCase());
+        countryProfileCache.delete(country.toLowerCase());
         worldMapCache.clear();
-        scenarioCache.delete(`scenario_${city.toLowerCase()}`);
+        scenarioCache.delete(`scenario_${country.toLowerCase()}`);
 
-        logger.info('Choice submitted', { city, choiceId, dominant: updatedProfile.dominantEmotion, requestId: req.id });
+        logger.info('Choice submitted', { country, choiceId, dominant: updatedProfile.dominantEmotion, requestId: req.id });
 
         return res.json({
             success: true,
@@ -141,21 +141,21 @@ router.post('/submit-choice', validateBody(submitChoiceSchema), async (req, res,
     }
 });
 
-// ─── City Profile ─────────────────────────
+// ─── Country Profile ─────────────────────────
 /**
- * GET /api/city-profile/:city
- * Get the emotional profile of a specific city (cached).
+ * GET /api/country-profile/:country
+ * Get the emotional profile of a specific country (cached).
  */
-router.get('/city-profile/:city', async (req, res, next) => {
+router.get('/country-profile/:country', async (req, res, next) => {
     try {
-        const cityName = decodeURIComponent(req.params.city);
-        const cacheKey = cityName.toLowerCase();
+        const countryName = decodeURIComponent(req.params.country);
+        const cacheKey = countryName.toLowerCase();
 
-        const response = await cityProfileCache.getOrSet(cacheKey, async () => {
-            const profile = await getCityProfile(cityName);
+        const response = await countryProfileCache.getOrSet(cacheKey, async () => {
+            const profile = await getCountryProfile(countryName);
 
             if (!profile) {
-                return { exists: false, city: cityName };
+                return { exists: false, country: countryName };
             }
 
             return {
@@ -174,7 +174,7 @@ router.get('/city-profile/:city', async (req, res, next) => {
 // ─── World Map ────────────────────────────
 /**
  * GET /api/world-map
- * Get all cities with emotional data for atlas visualization (cached).
+ * Get all countries with emotional data for atlas visualization (cached).
  */
 router.get('/world-map', async (req, res, next) => {
     try {
@@ -182,12 +182,12 @@ router.get('/world-map', async (req, res, next) => {
         const cacheKey = `worldmap_${limit}`;
 
         const response = await worldMapCache.getOrSet(cacheKey, async () => {
-            const cities = await getAllCityProfiles(limit);
+            const countries = await getAllCountryProfiles(limit);
             return {
-                count: cities.length,
-                cities: cities.map((c) => ({
+                count: countries.length,
+                countries: countries.map((c) => ({
                     name: c.name,
-                    country: c.country,
+                    capital: c.capital,
                     lat: c.lat,
                     lng: c.lng,
                     emotions: c.emotions,
@@ -204,12 +204,12 @@ router.get('/world-map', async (req, res, next) => {
     }
 });
 
-// ─── City Search ──────────────────────────
+// ─── Country Search ──────────────────────────
 /**
- * GET /api/search-cities
- * Autocomplete city search (cached).
+ * GET /api/search-countries
+ * Autocomplete country search (cached).
  */
-router.get('/search-cities', (req, res, next) => {
+router.get('/search-countries', (req, res, next) => {
     try {
         const q = (req.query.q || '').trim();
         if (q.length < 1) {
@@ -217,8 +217,8 @@ router.get('/search-cities', (req, res, next) => {
         }
 
         const cacheKey = `search_${q.toLowerCase()}`;
-        const response = citySearchCache.getOrSet(cacheKey, () => {
-            const results = searchCities(q, 8);
+        const response = countrySearchCache.getOrSet(cacheKey, () => {
+            const results = searchCountries(q, 8);
             return { results };
         });
 
@@ -359,8 +359,8 @@ router.get('/health', (_req, res) => {
  */
 router.get('/cache-stats', (_req, res) => {
     res.json({
-        citySearch: citySearchCache.stats(),
-        cityProfile: cityProfileCache.stats(),
+        countrySearch: countrySearchCache.stats(),
+        countryProfile: countryProfileCache.stats(),
         worldMap: worldMapCache.stats(),
         scenario: scenarioCache.stats(),
     });

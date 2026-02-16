@@ -1,7 +1,7 @@
 /**
  * Emotion Engine Service
- * Processes player choices into emotional vectors and manages city profiles in Firestore.
- * Implements adaptive learning rate for stabilised city personalities.
+ * Processes player choices into emotional vectors and manages country profiles in Firestore.
+ * Implements adaptive learning rate for stabilised country personalities.
  * @module services/emotionEngine
  */
 
@@ -9,47 +9,47 @@ const { getDb } = require('../config/firebase');
 const { EMOTION_DIMENSIONS } = require('./scenarioGenerator');
 const { logger } = require('../utils/logger');
 
-/** Firestore collection name for city emotion profiles */
-const CITIES_COLLECTION = 'cities';
+/** Firestore collection name for country emotion profiles */
+const COUNTRIES_COLLECTION = 'countries';
 
 /** Weight for new interactions vs existing profile (lower = more stable) */
 const LEARNING_RATE = 0.15;
 
 /**
- * Get the emotional profile of a city from Firestore.
- * @param {string} cityName - Normalized city name
- * @returns {Promise<Object|null>} City profile or null
+ * Get the emotional profile of a country from Firestore.
+ * @param {string} countryName - Normalized country name
+ * @returns {Promise<Object|null>} Country profile or null
  */
-async function getCityProfile(cityName) {
+async function getCountryProfile(countryName) {
     const db = getDb();
     if (!db) return getDefaultProfile();
 
     try {
-        const key = cityName.toLowerCase().replace(/\s+/g, '_');
-        const doc = await db.collection(CITIES_COLLECTION).doc(key).get();
+        const key = countryName.toLowerCase().replace(/\s+/g, '_');
+        const doc = await db.collection(COUNTRIES_COLLECTION).doc(key).get();
 
         if (!doc.exists) return null;
 
         return doc.data();
     } catch (error) {
-        logger.error('Firestore read error', { error: error.message, city: cityName });
+        logger.error('Firestore read error', { error: error.message, country: countryName });
         return null;
     }
 }
 
 /**
- * Update a city's emotional profile with a new interaction.
+ * Update a country's emotional profile with a new interaction.
  * Uses exponential moving average to blend new emotions with existing profile.
- * @param {string} cityName - City name
+ * @param {string} countryName - Country name
  * @param {Object} newEmotions - Emotion vector from player choice
- * @param {Object} cityData - City metadata (country, lat, lng)
+ * @param {Object} countryData - Country metadata (capital, lat, lng)
  * @returns {Promise<Object>} Updated profile
  */
-async function updateCityProfile(cityName, newEmotions, cityData = {}) {
+async function updateCountryProfile(countryName, newEmotions, countryData = {}) {
     const db = getDb();
-    const key = cityName.toLowerCase().replace(/\s+/g, '_');
+    const key = countryName.toLowerCase().replace(/\s+/g, '_');
 
-    const existing = await getCityProfile(cityName);
+    const existing = await getCountryProfile(countryName);
 
     const mergedEmotions = mergeEmotions(
         existing?.emotions || getDefaultProfile().emotions,
@@ -58,10 +58,10 @@ async function updateCityProfile(cityName, newEmotions, cityData = {}) {
     );
 
     const updatedProfile = {
-        name: cityData.name || cityName,
-        country: cityData.country || existing?.country || 'Unknown',
-        lat: cityData.lat || existing?.lat || 0,
-        lng: cityData.lng || existing?.lng || 0,
+        name: countryData.name || countryName,
+        capital: countryData.capital || existing?.capital || 'Unknown',
+        lat: countryData.lat || existing?.lat || 0,
+        lng: countryData.lng || existing?.lng || 0,
         emotions: mergedEmotions,
         dominantEmotion: getDominantEmotion(mergedEmotions),
         visitCount: (existing?.visitCount || 0) + 1,
@@ -70,10 +70,10 @@ async function updateCityProfile(cityName, newEmotions, cityData = {}) {
 
     if (db) {
         try {
-            await db.collection(CITIES_COLLECTION).doc(key).set(updatedProfile, { merge: true });
-            logger.info('City profile updated', { city: cityName, visitCount: updatedProfile.visitCount });
+            await db.collection(COUNTRIES_COLLECTION).doc(key).set(updatedProfile, { merge: true });
+            logger.info('Country profile updated', { country: countryName, visitCount: updatedProfile.visitCount });
         } catch (error) {
-            logger.error('Firestore write error', { error: error.message, city: cityName });
+            logger.error('Firestore write error', { error: error.message, country: countryName });
         }
     }
 
@@ -124,17 +124,17 @@ function getDominantEmotion(emotions) {
 }
 
 /**
- * Get all city profiles from Firestore (for world map).
- * @param {number} limit - Maximum number of cities to return
- * @returns {Promise<Object[]>} Array of city profiles
+ * Get all country profiles from Firestore (for world map).
+ * @param {number} limit - Maximum number of countries to return
+ * @returns {Promise<Object[]>} Array of country profiles
  */
-async function getAllCityProfiles(limit = 500) {
+async function getAllCountryProfiles(limit = 500) {
     const db = getDb();
     if (!db) return [];
 
     try {
         const snapshot = await db
-            .collection(CITIES_COLLECTION)
+            .collection(COUNTRIES_COLLECTION)
             .orderBy('visitCount', 'desc')
             .limit(limit)
             .get();
@@ -147,7 +147,7 @@ async function getAllCityProfiles(limit = 500) {
 }
 
 /**
- * Get default emotion profile for a new city.
+ * Get default emotion profile for a new country.
  * @returns {Object} Balanced default profile
  */
 function getDefaultProfile() {
@@ -182,11 +182,11 @@ function getEmotionColor(emotion) {
 }
 
 module.exports = {
-    getCityProfile,
-    updateCityProfile,
+    getCountryProfile,
+    updateCountryProfile,
     mergeEmotions,
     getDominantEmotion,
-    getAllCityProfiles,
+    getAllCountryProfiles,
     getDefaultProfile,
     getEmotionColor,
     EMOTION_DIMENSIONS,

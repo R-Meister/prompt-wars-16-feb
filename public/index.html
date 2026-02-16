@@ -14,6 +14,9 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 </head>
 
 <body>
@@ -52,66 +55,31 @@
           </svg>
         </button>
         <div id="session-counter" class="session-counter" aria-live="polite">
-          <span id="city-count">0</span> cities
+          <span id="country-count">0</span> countries
         </div>
       </nav>
     </header>
 
-    <!-- SVG Atlas Container -->
+    <!-- Leaflet Map Container -->
     <div id="atlas-container" class="atlas-container" role="img" aria-label="Emotional world atlas">
-      <svg id="svg-atlas" class="svg-atlas" viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg">
-        <!-- Simplified world outline -->
-        <rect width="1000" height="500" fill="#0c1425" />
-        <!-- Grid lines -->
-        <g class="atlas-grid" stroke="rgba(100,116,139,0.1)" stroke-width="0.5">
-          <line x1="0" y1="250" x2="1000" y2="250" />
-          <line x1="500" y1="0" x2="500" y2="500" />
-          <line x1="0" y1="125" x2="1000" y2="125" stroke-dasharray="4" />
-          <line x1="0" y1="375" x2="1000" y2="375" stroke-dasharray="4" />
-          <line x1="250" y1="0" x2="250" y2="500" stroke-dasharray="4" />
-          <line x1="750" y1="0" x2="750" y2="500" stroke-dasharray="4" />
-        </g>
-        <!-- Simplified continent outlines -->
-        <g class="atlas-continents" fill="rgba(30,41,59,0.8)" stroke="rgba(100,116,139,0.25)" stroke-width="0.8">
-          <!-- North America -->
-          <path d="M120,80 L200,70 L250,100 L260,140 L240,180 L200,200 L170,210 L140,180 L100,150 L90,120 Z" />
-          <!-- South America -->
-          <path d="M200,230 L230,240 L250,280 L260,320 L240,370 L220,400 L200,390 L190,350 L180,300 L185,260 Z" />
-          <!-- Europe -->
-          <path d="M440,70 L480,60 L520,70 L540,90 L530,120 L500,130 L470,120 L450,100 Z" />
-          <!-- Africa -->
-          <path d="M450,160 L500,150 L540,170 L560,220 L550,280 L530,330 L500,350 L470,320 L450,270 L440,220 Z" />
-          <!-- Asia -->
-          <path d="M550,50 L650,40 L750,60 L800,100 L820,150 L790,180 L740,170 L680,160 L620,140 L580,120 L560,90 Z" />
-          <!-- India -->
-          <path d="M620,170 L660,160 L680,190 L670,230 L640,250 L620,230 L610,200 Z" />
-          <!-- Southeast Asia -->
-          <path d="M700,180 L750,170 L780,200 L770,240 L740,250 L710,230 L700,200 Z" />
-          <!-- Australia -->
-          <path d="M760,300 L830,290 L870,310 L880,350 L860,380 L820,390 L780,370 L760,340 Z" />
-        </g>
-        <!-- City markers container -->
-        <g id="atlas-markers" class="atlas-markers"></g>
-        <!-- Active city pulse -->
-        <g id="atlas-active" class="atlas-active"></g>
-      </svg>
+      <div id="leaflet-map" class="leaflet-map"></div>
       <div class="atlas-overlay"></div>
     </div>
 
     <!-- Game Panel -->
     <section id="game-panel" class="game-panel" role="region" aria-label="Game interaction panel">
-      <!-- City Chain -->
-      <div id="city-chain" class="city-chain" role="list" aria-label="Cities visited this session">
-        <div class="chain-placeholder">Enter your first city to begin...</div>
+      <!-- Country Chain -->
+      <div id="country-chain" class="country-chain" role="list" aria-label="Countries visited this session">
+        <div class="chain-placeholder">Enter your first country to begin...</div>
       </div>
 
       <!-- Input Area -->
       <div class="input-area" id="input-area">
         <div class="input-wrapper">
-          <label for="city-input" class="sr-only">Enter a city name</label>
-          <input type="text" id="city-input" class="city-input" placeholder="Enter a city name..." autocomplete="off"
+          <label for="country-input" class="sr-only">Enter a country name</label>
+          <input type="text" id="country-input" class="country-input" placeholder="Enter a country name..." autocomplete="off"
             spellcheck="false" aria-describedby="input-hint">
-          <button id="btn-submit" class="btn-submit" aria-label="Submit city">
+          <button id="btn-submit" class="btn-submit" aria-label="Submit country">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" />
             </svg>
@@ -119,25 +87,18 @@
         </div>
         <div id="input-hint" class="input-hint" aria-live="polite"></div>
         <!-- Autocomplete dropdown -->
-        <ul id="autocomplete-list" class="autocomplete-list" role="listbox" aria-label="City suggestions"></ul>
+        <ul id="autocomplete-list" class="autocomplete-list" role="listbox" aria-label="Country suggestions"></ul>
       </div>
 
       <!-- Scenario Display -->
-      <div id="scenario-area" class="scenario-area hidden" role="region" aria-label="City scenario" aria-live="polite">
+      <div id="scenario-area" class="scenario-area hidden" role="region" aria-label="Country scenario" aria-live="polite">
         <div class="scenario-header">
-          <h2 id="scenario-city-name" class="scenario-city-name"></h2>
-          <span id="scenario-country" class="scenario-country"></span>
+          <h2 id="scenario-country-name" class="scenario-country-name"></h2>
+          <span id="scenario-capital" class="scenario-capital"></span>
         </div>
         <p id="scenario-text" class="scenario-text"></p>
         <div id="choice-buttons" class="choice-buttons" role="group" aria-label="Make your choice">
-          <button id="choice-a" class="choice-btn choice-a" data-choice="A">
-            <span class="choice-label">A</span>
-            <span id="choice-a-text" class="choice-text"></span>
-          </button>
-          <button id="choice-b" class="choice-btn choice-b" data-choice="B">
-            <span class="choice-label">B</span>
-            <span id="choice-b-text" class="choice-text"></span>
-          </button>
+          <!-- Choices will be dynamically generated -->
         </div>
       </div>
 
@@ -176,6 +137,9 @@
   <!-- Toast Notifications -->
   <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
 
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="/js/app.js"></script>
 </body>
 

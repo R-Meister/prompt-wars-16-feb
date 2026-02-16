@@ -225,17 +225,17 @@ body {
   font-weight: 600;
 }
 
-/* --- SVG Atlas Container --- */
+/* --- Atlas Container (Leaflet Map) --- */
 .atlas-container {
   position: fixed;
   inset: 0;
   z-index: 0;
 }
 
-.svg-atlas {
+.leaflet-map {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  background: #0c1425;
 }
 
 .atlas-overlay {
@@ -243,30 +243,7 @@ body {
   inset: 0;
   pointer-events: none;
   background: radial-gradient(ellipse at center, transparent 30%, rgba(10, 14, 26, 0.5) 100%);
-}
-
-.marker-glow {
-  animation: pulse-glow 2.5s ease-in-out infinite;
-}
-
-.marker-dot {
-  filter: drop-shadow(0 0 4px currentColor);
-}
-
-.pulse-ring {
-  animation: pulse-expand 2s ease-out infinite;
-}
-
-@keyframes pulse-expand {
-  0% {
-    r: 6;
-    opacity: 1;
-  }
-
-  100% {
-    r: 20;
-    opacity: 0;
-  }
+  z-index: 400;
 }
 
 /* --- Game Panel --- */
@@ -297,8 +274,8 @@ body {
   border-radius: 4px;
 }
 
-/* --- City Chain --- */
-.city-chain {
+/* --- Country Chain --- */
+.country-chain {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -311,7 +288,7 @@ body {
   scrollbar-width: none;
 }
 
-.city-chain::-webkit-scrollbar {
+.country-chain::-webkit-scrollbar {
   display: none;
 }
 
@@ -322,7 +299,7 @@ body {
   white-space: nowrap;
 }
 
-.chain-city {
+.chain-country {
   display: flex;
   align-items: center;
   gap: 0.3rem;
@@ -337,7 +314,7 @@ body {
   animation: pop-in 0.3s ease;
 }
 
-.chain-city .chain-dot {
+.chain-country .chain-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -361,7 +338,7 @@ body {
   position: relative;
 }
 
-.city-input {
+.country-input {
   flex: 1;
   padding: 0.85rem 1.2rem;
   font-family: 'Inter', sans-serif;
@@ -375,21 +352,21 @@ body {
   transition: all var(--transition-fast);
 }
 
-.city-input::placeholder {
+.country-input::placeholder {
   color: var(--text-muted);
 }
 
-.city-input:focus {
+.country-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-.city-input.error {
+.country-input.error {
   border-color: var(--tension);
   box-shadow: 0 0 0 3px hsla(0, 75%, 55%, 0.2);
 }
 
-.city-input.success {
+.country-input.success {
   border-color: var(--belonging);
   box-shadow: 0 0 0 3px hsla(145, 65%, 45%, 0.2);
 }
@@ -513,22 +490,7 @@ body {
   margin-bottom: 1rem;
 }
 
-.scenario-city-name {
-  font-family: 'Playfair Display', serif;
-  font-size: 1.5rem;
-  font-weight: 600;
-  background: linear-gradient(135deg, var(--text-primary), var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
 
-.scenario-country {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
 
 .scenario-text {
   font-size: 1.05rem;
@@ -996,7 +958,7 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .scenario-city-name {
+  .scenario-country-name {
     font-size: 1.2rem;
   }
 
@@ -1062,4 +1024,362 @@ body {
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin-slow 0.8s linear infinite;
+}
+
+/* ============================================
+   NEW STYLES: Leaflet Map & Dynamic Choices
+   ============================================ */
+
+/* --- Leaflet Map Container --- */
+.leaflet-map {
+  width: 100%;
+  height: 100%;
+  background: #0c1425;
+}
+
+/* --- Custom Map Markers --- */
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.marker-container {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+
+.marker-container.active {
+  width: 30px;
+  height: 30px;
+}
+
+.marker-pulse {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  opacity: 0.4;
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+.marker-pulse.active {
+  animation: pulse-ring-active 1.5s ease-out infinite;
+}
+
+.marker-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.marker-core.active {
+  width: 12px;
+  height: 12px;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+@keyframes pulse-ring-active {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+/* --- Leaflet Popup Customization --- */
+.custom-popup .leaflet-popup-content-wrapper {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.custom-popup .leaflet-popup-tip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-glass);
+}
+
+.custom-popup .leaflet-popup-content {
+  margin: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* --- Country Chain Updates --- */
+.country-chain {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.5rem 0;
+  margin-bottom: 1rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-glass) transparent;
+}
+
+.country-chain::-webkit-scrollbar {
+  height: 4px;
+}
+
+.country-chain::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.country-chain::-webkit-scrollbar-thumb {
+  background: var(--border-glass);
+  border-radius: 2px;
+}
+
+.chain-country {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.chain-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chain-arrow {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* --- Country Input --- */
+.country-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  background: var(--bg-glass-light);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-family: 'Inter', sans-serif;
+  transition: all var(--transition-fast);
+}
+
+.country-input::placeholder {
+  color: var(--text-muted);
+}
+
+.country-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.country-input.success {
+  border-color: var(--belonging);
+}
+
+.country-input.error {
+  border-color: var(--tension);
+}
+
+/* --- Autocomplete Capital Display --- */
+.autocomplete-list li .ac-capital {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* --- Scenario Header Updates --- */
+.scenario-country-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.5rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.scenario-capital {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* --- Dynamic Choice Buttons --- */
+.choice-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.choice-btn {
+  position: relative;
+  padding: 1rem;
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  background: var(--bg-glass-light);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: 'Inter', sans-serif;
+  transition: all var(--transition-base);
+  overflow: hidden;
+  min-height: 80px;
+}
+
+.choice-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+  border-radius: inherit;
+}
+
+/* Choice variants with different accent colors */
+.choice-a::before {
+  background: linear-gradient(135deg, hsla(35, 90%, 55%, 0.15), hsla(145, 65%, 45%, 0.1));
+}
+
+.choice-b::before {
+  background: linear-gradient(135deg, hsla(220, 70%, 55%, 0.15), hsla(280, 60%, 55%, 0.1));
+}
+
+.choice-c::before {
+  background: linear-gradient(135deg, hsla(0, 75%, 55%, 0.15), hsla(35, 90%, 55%, 0.1));
+}
+
+.choice-d::before {
+  background: linear-gradient(135deg, hsla(280, 60%, 55%, 0.15), hsla(220, 70%, 55%, 0.1));
+}
+
+.choice-btn:hover::before,
+.choice-btn:focus-visible::before {
+  opacity: 1;
+}
+
+.choice-btn:hover,
+.choice-btn:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+
+.choice-btn:active {
+  transform: translateY(0);
+}
+
+.choice-btn.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.choice-btn.selected::before {
+  opacity: 1;
+}
+
+.choice-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.choice-btn.disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.choice-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: white;
+  margin-bottom: 0.5rem;
+}
+
+.choice-text {
+  display: block;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* --- Responsive Updates for Dynamic Choices --- */
+@media (max-width: 640px) {
+  .choice-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-country-name {
+    font-size: 1.2rem;
+  }
+
+  .country-chain {
+    gap: 0.35rem;
+  }
+
+  .chain-country {
+    font-size: 0.75rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .choice-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 901px) {
+  .choice-buttons {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
+/* --- Leaflet Control Customization --- */
+.leaflet-control-zoom a {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-glass) !important;
+  color: var(--text-secondary) !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--bg-glass-light) !important;
+  color: var(--text-primary) !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(10, 14, 26, 0.8) !important;
+  color: var(--text-muted) !important;
+  font-size: 0.65rem !important;
+}
+
+.leaflet-control-attribution a {
+  color: var(--text-secondary) !important;
 }

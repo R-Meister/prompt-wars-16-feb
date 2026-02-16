@@ -1,6 +1,6 @@
 /**
  * Atlas: Echoes of Earth — Main Application
- * Core game logic, UI interactions, SVG atlas, and state management.
+ * Core game logic, UI interactions, Leaflet map, and state management.
  * @module app
  */
 
@@ -8,13 +8,16 @@
     'use strict';
 
     // ─── State ─────────────────────────────
-    /** @type {{ cityChain: Array, usedCities: string[], previousCity: string|null, currentScenario: Object|null, isLoading: boolean }} */
+    /** @type {{ countryChain: Array, usedCountries: string[], previousCountry: string|null, currentScenario: Object|null, isLoading: boolean, map: Object|null, markers: Array }} */
     const state = {
-        cityChain: [],
-        usedCities: [],
-        previousCity: null,
+        countryChain: [],
+        usedCountries: [],
+        previousCountry: null,
         currentScenario: null,
         isLoading: false,
+        map: null,
+        markers: [],
+        activeMarker: null,
     };
 
     // ─── DOM Elements ──────────────────────
@@ -22,33 +25,28 @@
     const els = {
         loadingScreen: $('loading-screen'),
         app: $('app'),
-        cityInput: $('city-input'),
+        countryInput: $('country-input'),
         btnSubmit: $('btn-submit'),
         inputHint: $('input-hint'),
         autocompleteList: $('autocomplete-list'),
         scenarioArea: $('scenario-area'),
-        scenarioCityName: $('scenario-city-name'),
-        scenarioCountry: $('scenario-country'),
+        scenarioCountryName: $('scenario-country-name'),
+        scenarioCapital: $('scenario-capital'),
         scenarioText: $('scenario-text'),
-        choiceA: $('choice-a'),
-        choiceB: $('choice-b'),
-        choiceAText: $('choice-a-text'),
-        choiceBText: $('choice-b-text'),
+        choiceButtons: $('choice-buttons'),
         echoResult: $('echo-result'),
         emotionBars: $('emotion-bars'),
         echoMessage: $('echo-message'),
         btnContinue: $('btn-continue'),
-        cityChain: $('city-chain'),
-        cityCount: $('city-count'),
+        countryChain: $('country-chain'),
+        countryCount: $('country-count'),
         inputArea: $('input-area'),
         btnWorldMap: $('btn-world-map'),
         btnNewGame: $('btn-new-game'),
         worldMapModal: $('world-map-modal'),
         btnCloseModal: $('btn-close-modal'),
         toastContainer: $('toast-container'),
-        svgAtlas: $('svg-atlas'),
-        atlasMarkers: $('atlas-markers'),
-        atlasActive: $('atlas-active'),
+        leafletMap: $('leaflet-map'),
     };
 
     // ─── Emotion metadata ─────────────────
@@ -70,85 +68,10 @@
         neutral: { r: 148, g: 163, b: 184 },
     };
 
-    // ─── SVG Atlas Helpers ─────────────────
-    /**
-     * Convert lat/lng to SVG viewBox coordinates (equirectangular projection).
-     * @param {number} lat - Latitude (-90 to 90)
-     * @param {number} lng - Longitude (-180 to 180)
-     * @returns {{ x: number, y: number }}
-     */
-    function latLngToSvg(lat, lng) {
-        const x = ((lng + 180) / 360) * 1000;
-        const y = ((90 - lat) / 180) * 500;
-        return { x, y };
-    }
-
-    /**
-     * Add a glowing marker for a city on the SVG atlas.
-     * @param {Object} city - City data with lat, lng, name
-     * @param {string} emotion - Dominant emotion for color
-     */
-    function addAtlasMarker(city, emotion) {
-        if (!els.atlasMarkers) return;
-        const { x, y } = latLngToSvg(city.lat, city.lng);
-        const color = EMOTION_RGB[emotion] || EMOTION_RGB.neutral;
-        const rgb = `rgb(${color.r},${color.g},${color.b})`;
-        const rgbA = `rgba(${color.r},${color.g},${color.b},0.3)`;
-
-        // Glow circle
-        const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        glow.setAttribute('cx', x);
-        glow.setAttribute('cy', y);
-        glow.setAttribute('r', '12');
-        glow.setAttribute('fill', rgbA);
-        glow.classList.add('marker-glow');
-
-        // Core dot
-        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        dot.setAttribute('cx', x);
-        dot.setAttribute('cy', y);
-        dot.setAttribute('r', '4');
-        dot.setAttribute('fill', rgb);
-        dot.classList.add('marker-dot');
-
-        // Label
-        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        label.setAttribute('x', x);
-        label.setAttribute('y', y - 16);
-        label.setAttribute('text-anchor', 'middle');
-        label.setAttribute('fill', 'rgba(241,245,249,0.7)');
-        label.setAttribute('font-size', '9');
-        label.setAttribute('font-family', 'Inter, sans-serif');
-        label.textContent = city.name;
-
-        els.atlasMarkers.appendChild(glow);
-        els.atlasMarkers.appendChild(dot);
-        els.atlasMarkers.appendChild(label);
-    }
-
-    /**
-     * Show an animated pulse on the active city.
-     * @param {number} lat
-     * @param {number} lng
-     */
-    function setActiveCity(lat, lng) {
-        if (!els.atlasActive) return;
-        const { x, y } = latLngToSvg(lat, lng);
-        els.atlasActive.innerHTML = `
-            <circle cx="${x}" cy="${y}" r="6" fill="none" stroke="var(--accent)" stroke-width="2" class="pulse-ring"/>
-            <circle cx="${x}" cy="${y}" r="6" fill="none" stroke="var(--accent)" stroke-width="2" class="pulse-ring" style="animation-delay:.5s"/>
-        `;
-    }
-
-    /** Clear all atlas markers. */
-    function clearAtlasMarkers() {
-        if (els.atlasMarkers) els.atlasMarkers.innerHTML = '';
-        if (els.atlasActive) els.atlasActive.innerHTML = '';
-    }
-
     // ─── Initialize ────────────────────────
     /** Boot the application after DOM ready. */
     function init() {
+        initMap();
         setupEventListeners();
 
         // Simulate loading then reveal app
@@ -156,16 +79,135 @@
             els.loadingScreen.classList.add('fade-out');
             els.app.classList.remove('hidden');
             setTimeout(() => els.loadingScreen.remove(), 800);
-            els.cityInput.focus();
+            els.countryInput.focus();
         }, 2200);
+    }
+
+    // ─── Leaflet Map ───────────────────────
+    /** Initialize Leaflet map with CartoDB Dark Matter tiles. */
+    function initMap() {
+        if (!els.leafletMap) return;
+
+        // Initialize map centered on world view
+        state.map = L.map('leaflet-map', {
+            center: [20, 0],
+            zoom: 2,
+            minZoom: 2,
+            maxZoom: 10,
+            zoomControl: false,
+            attributionControl: false,
+            worldCopyJump: true,
+        });
+
+        // Add CartoDB Dark Matter tile layer
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(state.map);
+
+        // Add zoom control to bottom right
+        L.control.zoom({
+            position: 'bottomright'
+        }).addTo(state.map);
+    }
+
+    /**
+     * Add a glowing marker for a country on the Leaflet map.
+     * @param {Object} country - Country data with lat, lng, name
+     * @param {string} emotion - Dominant emotion for color
+     */
+    function addMapMarker(country, emotion) {
+        if (!state.map) return;
+        
+        const color = EMOTION_RGB[emotion] || EMOTION_RGB.neutral;
+        const rgb = `rgb(${color.r},${color.g},${color.b})`;
+        
+        // Create custom icon with pulse effect
+        const customIcon = L.divIcon({
+            className: 'custom-marker',
+            html: `
+                <div class="marker-container">
+                    <div class="marker-pulse" style="background: ${rgb};"></div>
+                    <div class="marker-core" style="background: ${rgb};"></div>
+                </div>
+            `,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+        });
+
+        const marker = L.marker([country.lat, country.lng], { icon: customIcon })
+            .addTo(state.map);
+        
+        // Add popup with country name
+        marker.bindPopup(`<b>${country.name}</b><br>${country.capital}`, {
+            closeButton: false,
+            className: 'custom-popup'
+        });
+
+        state.markers.push(marker);
+        return marker;
+    }
+
+    /**
+     * Show an animated pulse on the active country.
+     * @param {number} lat
+     * @param {number} lng
+     * @param {string} countryName
+     */
+    function setActiveCountry(lat, lng, countryName) {
+        if (!state.map) return;
+
+        // Remove previous active marker
+        if (state.activeMarker) {
+            state.map.removeLayer(state.activeMarker);
+        }
+
+        // Create active marker with larger pulse
+        const activeIcon = L.divIcon({
+            className: 'custom-marker active',
+            html: `
+                <div class="marker-container active">
+                    <div class="marker-pulse active"></div>
+                    <div class="marker-core active"></div>
+                </div>
+            `,
+            iconSize: [30, 30],
+            iconAnchor: [15, 15],
+        });
+
+        state.activeMarker = L.marker([lat, lng], { icon: activeIcon, zIndexOffset: 1000 })
+            .addTo(state.map);
+
+        // Fly to location with smooth animation
+        state.map.flyTo([lat, lng], 5, {
+            duration: 1.5,
+            easeLinearity: 0.25
+        });
+    }
+
+    /** Clear all map markers. */
+    function clearMapMarkers() {
+        if (state.activeMarker) {
+            state.map.removeLayer(state.activeMarker);
+            state.activeMarker = null;
+        }
+        state.markers.forEach(marker => state.map.removeLayer(marker));
+        state.markers = [];
+        
+        // Reset map view
+        state.map.flyTo([20, 0], 2, {
+            duration: 1.5,
+            easeLinearity: 0.25
+        });
     }
 
     // ─── Event Listeners ──────────────────
     /** Wire up all UI event handlers. */
     function setupEventListeners() {
-        // Submit city
+        // Submit country
         els.btnSubmit.addEventListener('click', handleSubmit);
-        els.cityInput.addEventListener('keydown', (e) => {
+        els.countryInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') handleSubmit();
             if (e.key === 'Escape') hideAutocomplete();
             if (e.key === 'ArrowDown') navigateAutocomplete(1);
@@ -174,14 +216,10 @@
 
         // Autocomplete with debounce
         let debounceTimer;
-        els.cityInput.addEventListener('input', () => {
+        els.countryInput.addEventListener('input', () => {
             clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => fetchAutocomplete(els.cityInput.value), 200);
+            debounceTimer = setTimeout(() => fetchAutocomplete(els.countryInput.value), 200);
         });
-
-        // Choices
-        els.choiceA.addEventListener('click', () => handleChoice('A'));
-        els.choiceB.addEventListener('click', () => handleChoice('B'));
 
         // Continue
         els.btnContinue.addEventListener('click', handleContinue);
@@ -209,14 +247,14 @@
         });
     }
 
-    // ─── Submit City ───────────────────────
+    // ─── Submit Country ─────────────────────
     /**
-     * Handle city submission: validate, generate scenario, update atlas.
+     * Handle country submission: validate, generate scenario, update map.
      * @returns {Promise<void>}
      */
     async function handleSubmit() {
-        const cityName = els.cityInput.value.trim();
-        if (!cityName || state.isLoading) return;
+        const countryName = els.countryInput.value.trim();
+        if (!countryName || state.isLoading) return;
 
         setLoading(true);
         hideAutocomplete();
@@ -224,10 +262,10 @@
 
         try {
             // 1. Validate
-            const validation = await api('/api/validate-city', {
-                city: cityName,
-                previousCity: state.previousCity,
-                usedCities: state.usedCities,
+            const validation = await api('/api/validate-country', {
+                country: countryName,
+                previousCountry: state.previousCountry,
+                usedCountries: state.usedCountries,
             });
 
             if (!validation.valid) {
@@ -241,30 +279,32 @@
             }
 
             // 2. Show success briefly
-            els.cityInput.classList.add('success');
-            showHint(`✓ ${validation.city.name}, ${validation.city.country}`, 'success');
+            els.countryInput.classList.add('success');
+            showHint(`✓ ${validation.country.name}`, 'success');
 
             // 3. Generate scenario
             const scenario = await api('/api/generate-scenario', {
-                city: validation.city.name,
-                country: validation.city.country,
-                lat: validation.city.lat,
-                lng: validation.city.lng,
+                country: validation.country.name,
+                capital: validation.country.capital,
+                lat: validation.country.lat,
+                lng: validation.country.lng,
+                continent: validation.country.continent,
+                region: validation.country.region,
             });
 
             // 4. Update state
-            state.currentScenario = { ...scenario, cityData: validation.city };
-            state.usedCities.push(validation.city.name.toLowerCase());
-            state.cityChain.push({
-                name: validation.city.name,
+            state.currentScenario = { ...scenario, countryData: validation.country };
+            state.usedCountries.push(validation.country.name.toLowerCase());
+            state.countryChain.push({
+                name: validation.country.name,
                 emotion: scenario.existingProfile?.dominantEmotion || 'neutral',
             });
 
             // 5. Update UI
-            updateCityChain();
+            updateCountryChain();
 
-            // 6. Mark on SVG atlas
-            setActiveCity(validation.city.lat, validation.city.lng);
+            // 6. Mark on map
+            setActiveCountry(validation.country.lat, validation.country.lng, validation.country.name);
 
             // 7. Show scenario
             showScenario(scenario);
@@ -279,7 +319,7 @@
 
     // ─── Show Scenario ─────────────────────
     /**
-     * Display the AI-generated scenario with choice buttons.
+     * Display the AI-generated scenario with dynamically generated choice buttons.
      * @param {Object} scenario
      */
     function showScenario(scenario) {
@@ -287,67 +327,77 @@
         els.echoResult.classList.add('hidden');
         els.scenarioArea.classList.remove('hidden');
 
-        els.scenarioCityName.textContent = scenario.city;
-        els.scenarioCountry.textContent = scenario.country;
+        els.scenarioCountryName.textContent = scenario.country;
+        els.scenarioCapital.textContent = scenario.capital;
 
         // Typewriter effect
         typewriter(els.scenarioText, scenario.scenario, 30);
 
-        els.choiceAText.textContent = scenario.choices[0].text;
-        els.choiceBText.textContent = scenario.choices[1].text;
-
-        // Reset choice buttons
-        els.choiceA.classList.remove('selected');
-        els.choiceB.classList.remove('selected');
-        els.choiceA.disabled = false;
-        els.choiceB.disabled = false;
+        // Dynamically generate choice buttons based on number of choices
+        els.choiceButtons.innerHTML = '';
+        scenario.choices.forEach((choice) => {
+            const btn = document.createElement('button');
+            btn.className = `choice-btn choice-${choice.id.toLowerCase()}`;
+            btn.setAttribute('data-choice', choice.id);
+            btn.innerHTML = `
+                <span class="choice-label">${choice.id}</span>
+                <span class="choice-text">${choice.text}</span>
+            `;
+            btn.addEventListener('click', () => handleChoice(choice.id));
+            els.choiceButtons.appendChild(btn);
+        });
     }
 
     // ─── Handle Choice ─────────────────────
     /**
      * Submit the player's choice and display the emotional echo.
-     * @param {'A'|'B'} choiceId
+     * @param {string} choiceId
      * @returns {Promise<void>}
      */
     async function handleChoice(choiceId) {
         if (state.isLoading || !state.currentScenario) return;
 
-        const idx = choiceId === 'A' ? 0 : 1;
-        const choice = state.currentScenario.choices[idx];
-        const cityData = state.currentScenario.cityData;
+        const choice = state.currentScenario.choices.find(c => c.id === choiceId);
+        const countryData = state.currentScenario.countryData;
+
+        if (!choice) return;
 
         // Visual feedback
-        const btn = choiceId === 'A' ? els.choiceA : els.choiceB;
-        const other = choiceId === 'A' ? els.choiceB : els.choiceA;
-        btn.classList.add('selected');
-        other.disabled = true;
-        btn.disabled = true;
+        const buttons = els.choiceButtons.querySelectorAll('.choice-btn');
+        buttons.forEach(btn => {
+            if (btn.dataset.choice === choiceId) {
+                btn.classList.add('selected');
+            } else {
+                btn.disabled = true;
+            }
+            btn.classList.add('disabled');
+        });
 
         setLoading(true);
 
         try {
             // Submit choice to backend
             const result = await api('/api/submit-choice', {
-                city: cityData.name,
-                country: cityData.country,
-                lat: cityData.lat,
-                lng: cityData.lng,
+                country: countryData.name,
+                capital: countryData.capital,
+                lat: countryData.lat,
+                lng: countryData.lng,
                 choiceId,
                 emotions: choice.emotions,
             });
 
-            state.previousCity = cityData.name;
+            state.previousCountry = countryData.name;
 
-            // Add marker to SVG atlas
-            addAtlasMarker(cityData, result.profile?.dominantEmotion || 'neutral');
+            // Add marker to map
+            addMapMarker(countryData, result.profile?.dominantEmotion || 'neutral');
 
             // Update chain emotion
-            const lastChain = state.cityChain[state.cityChain.length - 1];
+            const lastChain = state.countryChain[state.countryChain.length - 1];
             if (lastChain) lastChain.emotion = result.profile?.dominantEmotion || 'neutral';
-            updateCityChain();
+            updateCountryChain();
 
             // Show echo
-            showEcho(result.profile, choice.emotions, cityData.name);
+            showEcho(result.profile, choice.emotions, countryData.name);
 
         } catch (err) {
             showToast('Failed to save your echo. Try again.', 'error');
@@ -359,11 +409,11 @@
     // ─── Show Echo Result ──────────────────
     /**
      * Render the emotional echo result with animated bars.
-     * @param {Object} profile - City emotion profile
+     * @param {Object} profile - Country emotion profile
      * @param {Object} choiceEmotions - Emotions from chosen option
-     * @param {string} cityName
+     * @param {string} countryName
      */
-    function showEcho(profile, choiceEmotions, cityName) {
+    function showEcho(profile, choiceEmotions, countryName) {
         els.scenarioArea.classList.add('hidden');
         els.echoResult.classList.remove('hidden');
 
@@ -397,34 +447,34 @@
         const dominant = profile?.dominantEmotion || 'neutral';
         const visitCount = profile?.visitCount || 1;
         const messages = {
-            warmth: `${cityName} glows a little warmer now.`,
-            loneliness: `A quiet echo lingers over ${cityName}.`,
-            tension: `The air in ${cityName} tightens slightly.`,
-            nostalgia: `${cityName} remembers something from long ago.`,
-            belonging: `${cityName} feels a little more like home.`,
-            neutral: `You've left your mark on ${cityName}.`,
+            warmth: `${countryName} glows a little warmer now.`,
+            loneliness: `A quiet echo lingers over ${countryName}.`,
+            tension: `The air in ${countryName} tightens slightly.`,
+            nostalgia: `${countryName} remembers something from long ago.`,
+            belonging: `${countryName} feels a little more like home.`,
+            neutral: `You've left your mark on ${countryName}.`,
         };
 
         els.echoMessage.textContent = `${messages[dominant]} (${visitCount} ${visitCount === 1 ? 'visit' : 'visits'} total)`;
-        els.cityCount.textContent = state.cityChain.length;
+        els.countryCount.textContent = state.countryChain.length;
     }
 
     // ─── Continue Journey ──────────────────
-    /** Reset UI for the next city entry. */
+    /** Reset UI for the next country entry. */
     function handleContinue() {
         els.echoResult.classList.add('hidden');
         els.inputArea.classList.remove('hidden');
-        els.cityInput.value = '';
-        els.cityInput.classList.remove('success', 'error');
+        els.countryInput.value = '';
+        els.countryInput.classList.remove('success', 'error');
         clearHint();
 
         // Show required letter hint
-        if (state.previousCity) {
-            const lastLetter = getLastLetter(state.previousCity);
-            showHint(`Next city must start with "${lastLetter.toUpperCase()}"`, 'info');
+        if (state.previousCountry) {
+            const lastLetter = getLastLetter(state.previousCountry);
+            showHint(`Next country must start with "${lastLetter.toUpperCase()}"`, 'info');
         }
 
-        els.cityInput.focus();
+        els.countryInput.focus();
     }
 
     // ─── Autocomplete ──────────────────────
@@ -441,7 +491,7 @@
         }
 
         try {
-            const res = await fetch(`/api/search-cities?q=${encodeURIComponent(query)}`);
+            const res = await fetch(`/api/search-countries?q=${encodeURIComponent(query)}`);
             const data = await res.json();
 
             if (data.results?.length) {
@@ -461,14 +511,14 @@
     function showAutocomplete(results) {
         acIndex = -1;
         els.autocompleteList.innerHTML = results.map((c, i) =>
-            `<li role="option" data-index="${i}" data-name="${c.name}">${c.name} <span class="ac-country">${c.country}</span></li>`
+            `<li role="option" data-index="${i}" data-name="${c.name}">${c.name} <span class="ac-capital">${c.capital}</span></li>`
         ).join('');
 
         els.autocompleteList.classList.add('visible');
 
         els.autocompleteList.querySelectorAll('li').forEach((li) => {
             li.addEventListener('click', () => {
-                els.cityInput.value = li.dataset.name;
+                els.countryInput.value = li.dataset.name;
                 hideAutocomplete();
                 handleSubmit();
             });
@@ -492,11 +542,11 @@
         items.forEach((li) => li.classList.remove('active'));
         acIndex = (acIndex + dir + items.length) % items.length;
         items[acIndex].classList.add('active');
-        els.cityInput.value = items[acIndex].dataset.name;
+        els.countryInput.value = items[acIndex].dataset.name;
     }
 
     // ─── World Map ─────────────────────────
-    /** Open the world map modal and load city data as SVG markers. */
+    /** Open the world map modal and load country data as markers. */
     async function openWorldMap() {
         els.worldMapModal.classList.remove('hidden');
 
@@ -506,31 +556,43 @@
             const res = await fetch('/api/world-map');
             const data = await res.json();
 
-            if (data.cities?.length) {
-                // Build SVG for modal
-                let svgContent = `<svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;background:#0c1425;">
-                    <g stroke="rgba(100,116,139,0.08)" stroke-width="0.5">
-                        <line x1="0" y1="250" x2="1000" y2="250"/>
-                        <line x1="500" y1="0" x2="500" y2="500"/>
-                    </g>`;
-
-                data.cities.forEach((city) => {
-                    const { x, y } = latLngToSvg(city.lat, city.lng);
-                    const emotion = city.dominantEmotion || 'neutral';
-                    const color = EMOTION_RGB[emotion] || EMOTION_RGB.neutral;
-                    const rgb = `rgb(${color.r},${color.g},${color.b})`;
-                    const rgbA = `rgba(${color.r},${color.g},${color.b},0.25)`;
-                    const scale = Math.min(4 + city.visitCount * 0.5, 14);
-
-                    svgContent += `<circle cx="${x}" cy="${y}" r="${scale + 6}" fill="${rgbA}"/>`;
-                    svgContent += `<circle cx="${x}" cy="${y}" r="${scale}" fill="${rgb}" opacity="0.7"/>`;
-                    svgContent += `<text x="${x}" y="${y - scale - 4}" text-anchor="middle" fill="rgba(241,245,249,0.6)" font-size="8" font-family="Inter,sans-serif">${city.name}</text>`;
+            if (data.countries?.length) {
+                // Build Leaflet map for modal
+                mapView.innerHTML = '<div id="modal-map" style="width:100%;height:100%;"></div>';
+                
+                const modalMap = L.map('modal-map', {
+                    center: [20, 0],
+                    zoom: 2,
+                    minZoom: 2,
+                    zoomControl: true,
+                    attributionControl: true,
                 });
 
-                svgContent += '</svg>';
-                mapView.innerHTML = svgContent;
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    subdomains: 'abcd',
+                    maxZoom: 10
+                }).addTo(modalMap);
+
+                data.countries.forEach((country) => {
+                    const emotion = country.dominantEmotion || 'neutral';
+                    const color = EMOTION_RGB[emotion] || EMOTION_RGB.neutral;
+                    const rgb = `rgb(${color.r},${color.g},${color.b})`;
+                    const scale = Math.min(8 + country.visitCount * 1, 20);
+
+                    const icon = L.divIcon({
+                        className: 'modal-marker',
+                        html: `<div style="width:${scale}px;height:${scale}px;background:${rgb};border-radius:50%;opacity:0.8;"></div>`,
+                        iconSize: [scale, scale],
+                        iconAnchor: [scale/2, scale/2],
+                    });
+
+                    L.marker([country.lat, country.lng], { icon })
+                        .addTo(modalMap)
+                        .bindPopup(`<b>${country.name}</b><br>Visits: ${country.visitCount}`);
+                });
             } else {
-                mapView.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem;">No cities explored yet</div>';
+                mapView.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem;">No countries explored yet</div>';
             }
         } catch {
             showToast('Could not load world map data.', 'error');
@@ -545,31 +607,31 @@
     // ─── Reset Game ────────────────────────
     /** Reset all game state and UI to the initial state. */
     function resetGame() {
-        state.cityChain = [];
-        state.usedCities = [];
-        state.previousCity = null;
+        state.countryChain = [];
+        state.usedCountries = [];
+        state.previousCountry = null;
         state.currentScenario = null;
 
         els.scenarioArea.classList.add('hidden');
         els.echoResult.classList.add('hidden');
         els.inputArea.classList.remove('hidden');
-        els.cityInput.value = '';
-        els.cityInput.classList.remove('success', 'error');
+        els.countryInput.value = '';
+        els.countryInput.classList.remove('success', 'error');
         clearHint();
 
-        els.cityChain.innerHTML = '<div class="chain-placeholder">Enter your first city to begin...</div>';
-        els.cityCount.textContent = '0';
+        els.countryChain.innerHTML = '<div class="chain-placeholder">Enter your first country to begin...</div>';
+        els.countryCount.textContent = '0';
 
-        clearAtlasMarkers();
+        clearMapMarkers();
 
         showToast('New journey started!', 'info');
-        els.cityInput.focus();
+        els.countryInput.focus();
     }
 
-    // ─── City Chain UI ─────────────────────
-    /** Update the visual city chain with emotion colors. */
-    function updateCityChain() {
-        if (!state.cityChain.length) return;
+    // ─── Country Chain UI ─────────────────────
+    /** Update the visual country chain with emotion colors. */
+    function updateCountryChain() {
+        if (!state.countryChain.length) return;
 
         const emotionColors = {
             warmth: 'hsl(35,90%,55%)',
@@ -580,15 +642,15 @@
             neutral: 'hsl(220,15%,55%)',
         };
 
-        els.cityChain.innerHTML = state.cityChain.map((c, i) => {
+        els.countryChain.innerHTML = state.countryChain.map((c, i) => {
             const color = emotionColors[c.emotion] || emotionColors.neutral;
-            const arrow = i < state.cityChain.length - 1 ? '<span class="chain-arrow">→</span>' : '';
-            return `<div class="chain-city" role="listitem"><span class="chain-dot" style="background:${color}"></span>${c.name}</div>${arrow}`;
+            const arrow = i < state.countryChain.length - 1 ? '<span class="chain-arrow">→</span>' : '';
+            return `<div class="chain-country" role="listitem"><span class="chain-dot" style="background:${color}"></span>${c.name}</div>${arrow}`;
         }).join('');
 
         // Scroll to end
-        els.cityChain.scrollLeft = els.cityChain.scrollWidth;
-        els.cityCount.textContent = state.cityChain.length;
+        els.countryChain.scrollLeft = els.countryChain.scrollWidth;
+        els.countryCount.textContent = state.countryChain.length;
     }
 
     // ─── Utilities ─────────────────────────
@@ -628,13 +690,15 @@
     }
 
     /**
-     * Get the last alphabetic letter from a city name.
+     * Get the last alphabetic letter from a country name.
      * @param {string} str
      * @returns {string}
      */
     function getLastLetter(str) {
         for (let i = str.length - 1; i >= 0; i--) {
-            if (/[a-z]/i.test(str[i])) return str[i].toLowerCase();
+            if (/[a-z]/i.test(str[i])) {
+                return str[i].toLowerCase();
+            }
         }
         return str[str.length - 1].toLowerCase();
     }
@@ -671,12 +735,12 @@
 
     /** Shake input on validation error. */
     function shakeInput() {
-        els.cityInput.classList.add('error');
-        els.cityInput.style.animation = 'none';
+        els.countryInput.classList.add('error');
+        els.countryInput.style.animation = 'none';
         requestAnimationFrame(() => {
-            els.cityInput.style.animation = 'shake 0.4s ease';
+            els.countryInput.style.animation = 'shake 0.4s ease';
         });
-        setTimeout(() => els.cityInput.classList.remove('error'), 2000);
+        setTimeout(() => els.countryInput.classList.remove('error'), 2000);
     }
 
     /**

@@ -152,15 +152,15 @@ class LRUCache {
 }
 
 // Pre-configured cache instances for different data types
-const citySearchCache = new LRUCache({ maxSize: 100, defaultTTL: 60_000, name: 'citySearch' });
-const cityProfileCache = new LRUCache({ maxSize: 200, defaultTTL: 30_000, name: 'cityProfile' });
+const countrySearchCache = new LRUCache({ maxSize: 100, defaultTTL: 60_000, name: 'countrySearch' });
+const countryProfileCache = new LRUCache({ maxSize: 200, defaultTTL: 30_000, name: 'countryProfile' });
 const worldMapCache = new LRUCache({ maxSize: 1, defaultTTL: 120_000, name: 'worldMap' });
 const scenarioCache = new LRUCache({ maxSize: 50, defaultTTL: 300_000, name: 'scenario' });
 
 module.exports = {
     LRUCache,
-    citySearchCache,
-    cityProfileCache,
+    countrySearchCache,
+    countryProfileCache,
     worldMapCache,
     scenarioCache,
 };

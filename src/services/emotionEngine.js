@@ -1,21 +1,24 @@
 /**
  * Emotion Engine Service
- * Processes player choices into emotional vectors and manages city profiles in Firestore
+ * Processes player choices into emotional vectors and manages city profiles in Firestore.
+ * Implements adaptive learning rate for stabilised city personalities.
+ * @module services/emotionEngine
  */
 
 const { getDb } = require('../config/firebase');
 const { EMOTION_DIMENSIONS } = require('./scenarioGenerator');
+const { logger } = require('../utils/logger');
 
-/** Firestore collection name */
+/** Firestore collection name for city emotion profiles */
 const CITIES_COLLECTION = 'cities';
 
 /** Weight for new interactions vs existing profile (lower = more stable) */
 const LEARNING_RATE = 0.15;
 
 /**
- * Get the emotional profile of a city from Firestore
+ * Get the emotional profile of a city from Firestore.
  * @param {string} cityName - Normalized city name
- * @returns {Promise<object|null>} City profile or null
+ * @returns {Promise<Object|null>} City profile or null
  */
 async function getCityProfile(cityName) {
     const db = getDb();
@@ -29,27 +32,25 @@ async function getCityProfile(cityName) {
 
         return doc.data();
     } catch (error) {
-        console.error('[EmotionEngine] Read error:', error.message);
+        logger.error('Firestore read error', { error: error.message, city: cityName });
         return null;
     }
 }
 
 /**
- * Update a city's emotional profile with a new interaction
- * Uses exponential moving average to blend new emotions with existing profile
+ * Update a city's emotional profile with a new interaction.
+ * Uses exponential moving average to blend new emotions with existing profile.
  * @param {string} cityName - City name
- * @param {object} newEmotions - Emotion vector from player choice
- * @param {object} cityData - City metadata (country, lat, lng)
- * @returns {Promise<object>} Updated profile
+ * @param {Object} newEmotions - Emotion vector from player choice
+ * @param {Object} cityData - City metadata (country, lat, lng)
+ * @returns {Promise<Object>} Updated profile
  */
 async function updateCityProfile(cityName, newEmotions, cityData = {}) {
     const db = getDb();
     const key = cityName.toLowerCase().replace(/\s+/g, '_');
 
-    // Get existing profile
     const existing = await getCityProfile(cityName);
 
-    // Calculate merged emotions
     const mergedEmotions = mergeEmotions(
         existing?.emotions || getDefaultProfile().emotions,
         newEmotions,
@@ -64,14 +65,15 @@ async function updateCityProfile(cityName, newEmotions, cityData = {}) {
         emotions: mergedEmotions,
         dominantEmotion: getDominantEmotion(mergedEmotions),
         visitCount: (existing?.visitCount || 0) + 1,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: new Date().toISOString(),
     };
 
     if (db) {
         try {
             await db.collection(CITIES_COLLECTION).doc(key).set(updatedProfile, { merge: true });
+            logger.info('City profile updated', { city: cityName, visitCount: updatedProfile.visitCount });
         } catch (error) {
-            console.error('[EmotionEngine] Write error:', error.message);
+            logger.error('Firestore write error', { error: error.message, city: cityName });
         }
     }
 
@@ -79,17 +81,17 @@ async function updateCityProfile(cityName, newEmotions, cityData = {}) {
 }
 
 /**
- * Merge new emotion vector with existing profile using weighted average
- * Earlier interactions have less effect as visit count grows (stabilization)
- * @param {object} existing - Current emotion vector
- * @param {object} newEmotions - New emotion vector from choice
+ * Merge new emotion vector with existing profile using weighted average.
+ * Earlier interactions have less effect as visit count grows (stabilisation).
+ * @param {Object} existing - Current emotion vector
+ * @param {Object} newEmotions - New emotion vector from choice
  * @param {number} visitCount - Number of prior visits
- * @returns {object} Merged emotion vector
+ * @returns {Object} Merged emotion vector
  */
 function mergeEmotions(existing, newEmotions, visitCount) {
     const merged = {};
 
-    // Adaptive learning rate: decreases as more visits happen (stabilization)
+    // Adaptive learning rate: decreases as more visits happen (stabilisation)
     const adaptiveRate = Math.max(0.05, LEARNING_RATE / Math.sqrt(1 + visitCount * 0.1));
 
     for (const dim of EMOTION_DIMENSIONS) {
@@ -102,8 +104,8 @@ function mergeEmotions(existing, newEmotions, visitCount) {
 }
 
 /**
- * Find the dominant emotion in a profile
- * @param {object} emotions - Emotion vector
+ * Find the dominant emotion in a profile.
+ * @param {Object} emotions - Emotion vector
  * @returns {string} Name of the strongest emotion
  */
 function getDominantEmotion(emotions) {
@@ -122,9 +124,9 @@ function getDominantEmotion(emotions) {
 }
 
 /**
- * Get all city profiles from Firestore (for world map)
+ * Get all city profiles from Firestore (for world map).
  * @param {number} limit - Maximum number of cities to return
- * @returns {Promise<object[]>} Array of city profiles
+ * @returns {Promise<Object[]>} Array of city profiles
  */
 async function getAllCityProfiles(limit = 500) {
     const db = getDb();
@@ -139,14 +141,14 @@ async function getAllCityProfiles(limit = 500) {
 
         return snapshot.docs.map(doc => doc.data());
     } catch (error) {
-        console.error('[EmotionEngine] Read all error:', error.message);
+        logger.error('Firestore read-all error', { error: error.message });
         return [];
     }
 }
 
 /**
- * Get default emotion profile for a new city
- * @returns {object}
+ * Get default emotion profile for a new city.
+ * @returns {Object} Balanced default profile
  */
 function getDefaultProfile() {
     return {
@@ -155,26 +157,26 @@ function getDefaultProfile() {
             loneliness: 0.5,
             tension: 0.5,
             nostalgia: 0.5,
-            belonging: 0.5
+            belonging: 0.5,
         },
         visitCount: 0,
-        dominantEmotion: 'neutral'
+        dominantEmotion: 'neutral',
     };
 }
 
 /**
- * Get emotion color mapping for visualization
+ * Get emotion colour mapping for visualisation.
  * @param {string} emotion - Emotion name
- * @returns {string} HSL color string
+ * @returns {string} HSL colour string
  */
 function getEmotionColor(emotion) {
     const colors = {
-        warmth: 'hsl(35, 90%, 55%)',      // Amber
-        loneliness: 'hsl(220, 70%, 55%)',  // Blue
-        tension: 'hsl(0, 75%, 55%)',       // Red
-        nostalgia: 'hsl(280, 60%, 55%)',   // Violet
-        belonging: 'hsl(145, 65%, 45%)',   // Green
-        neutral: 'hsl(220, 15%, 55%)'      // Gray
+        warmth: 'hsl(35, 90%, 55%)',
+        loneliness: 'hsl(220, 70%, 55%)',
+        tension: 'hsl(0, 75%, 55%)',
+        nostalgia: 'hsl(280, 60%, 55%)',
+        belonging: 'hsl(145, 65%, 45%)',
+        neutral: 'hsl(220, 15%, 55%)',
     };
     return colors[emotion] || colors.neutral;
 }
@@ -187,5 +189,5 @@ module.exports = {
     getAllCityProfiles,
     getDefaultProfile,
     getEmotionColor,
-    EMOTION_DIMENSIONS
+    EMOTION_DIMENSIONS,
 };

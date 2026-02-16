@@ -6,6 +6,7 @@ node_modules/
 .env.local
 .env.*.local
 firebase-service-account.json
+app.yaml
 
 # Build outputs
 dist/

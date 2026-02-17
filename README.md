@@ -1,3 +1,4 @@
+#Does Not Work.
 # 🌍 Atlas: Echoes of Earth
 
 > The world's first living emotional map — a geography game shaped not by data, but by human impressions.
